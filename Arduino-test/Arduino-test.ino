@@ -1,15 +1,15 @@
 #include <SoftwareSerial.h>
 #include <dht.h>
 
-#define tx  4
-#define rx  5
-#define DHT11_PIN 8
+#define tx 11
+#define rx 12
+#define DHT11_PIN 2
 #define PHOTOSENSOR_PIN A0
 #define MOISTURESENSOR_PIN A1
 #define WATERLEVEL_PIN A2
 
 /* Commands for requesting sensor data from Arduino via Serial*/
-enum COMMANDS : uint8_t{
+enum COMMANDS : uint8_t {
   TEMPERATURE = 1,
   HUMIDITY,
   PHOTOSENSOR,
@@ -18,99 +18,86 @@ enum COMMANDS : uint8_t{
   PUMP_STATE,
 };
 
-enum WETNESS{
+enum WETNESS {
   WET = 220,
   SOMEWHAT_WET = 320,
   SOMEWHAT_DRY = 400,
   DRY = 460
 };
 
-enum REPORT_MODE : uint8_t{
+enum REPORT_MODE : uint8_t {
   PERIODICAL,
   ON_DEMAND
 };
 
 /* struct for all the data */
-/* should change to a struct of each sensor reading including time, sensor type, raw data, report mode*/
-// typedef struct {
-//   float     temperature;
-//   float     humidity;
-//   int16_t   photoSensor;
-//   int16_t   waterLevel;
-//   int16_t   soilMoisture;
-//   bool      pumpState;
-// } SensorData;
-
 typedef struct {
-  char *       sensorType;
-  byte *       sensingData;
-  uint16_t     samplingRate;
-  bool         enablePeriodicSampling;
-} Sensor;
+  float temperature;
+  float humidity;
+  int16_t photoSensor;
+  int16_t waterLevel;
+  int16_t soilMoisture;
+  bool pumpState;
+} SensorData;
 
 // init
 SoftwareSerial mySerial(rx, tx);
 dht DHT;
-// SensorData initData = {34.23, 23.34, 123, 321, 0};
-// SensorData * currentData = &initData;
-Sensor * temperature, * humidity, * photoSensor, * waterLevel, * soilMoisture, * pumpState;
+SensorData *currentData = (SensorData *)malloc(sizeof(SensorData));
 
 void setup() {
-  //initSensorStructure();
   // put your setup code here, to run once:
   Serial.begin(9600);
   mySerial.begin(57600);
   Serial.println("Starting..........");
-
-  pinMode(PHOTOSENSOR_PIN, INPUT);
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-
-  //Serial.println(*(double *)(temperature->sensingData));
-  getPhotoSensor();
-  Serial.println(*(int *)(photoSensor->sensingData));
-  delay(2000);
   // Poll for commands from connected ESP8266 via Serial
-  while(mySerial.available() > 0){
-    
+  while (mySerial.available() > 0) {
+
     // Read command
     Serial.print("Command Received: ");
     byte cmd = mySerial.read();
     Serial.println(cmd);
 
     // Process command
-    switch(cmd){
+    switch (cmd) {
       case TEMPERATURE:
         Serial.println("Temperature requested");
         Serial.println("Sending temp data.....");
-        writeBytes((byte *)(temperature), sizeof(Sensor));
+        getTemperature();
+        writeBytes((byte *)&(currentData->temperature), sizeof(float));
         break;
       case HUMIDITY:
         Serial.println("Humidity requested");
         Serial.println("Sending humidity data.....");
-        writeBytes((byte *)(humidity), sizeof(Sensor));             
+        getHumidity();
+        writeBytes((byte *)&(currentData->humidity), sizeof(float));
         break;
       case PHOTOSENSOR:
         Serial.println("Photosensor requested");
         Serial.println("Sending photosensor data.....");
-        writeBytes((byte *)(photoSensor), sizeof(Sensor));             
+        getPhotoSensor();
+        writeBytes((byte *)&(currentData->photoSensor), sizeof(int16_t));
         break;
       case WATER_LVL:
         Serial.println("Water Level requested");
         Serial.println("Sending water level data.....");
-        writeBytes((byte *)(waterLevel), sizeof(Sensor));  
+        getWaterLvl();
+        writeBytes((byte *)&(currentData->waterLevel), sizeof(int16_t));
         break;
       case SOIL_MOISTURE:
         Serial.println("Soil Moisture requested");
         Serial.println("Sending soil moisture data.....");
-        writeBytes((byte *)(soilMoisture), sizeof(Sensor));  
+        getMoistureSensor();
+        writeBytes((byte *)&(currentData->soilMoisture), sizeof(int16_t));
         break;
       case PUMP_STATE:
         Serial.println("Pump state requested");
         Serial.println("Sending pump state data.....");
-        writeBytes((byte *)(pumpState), sizeof(Sensor));  
+        writeBytes((byte *)&(currentData->pumpState), sizeof(bool));
         // pump on or off
         break;
       default:
@@ -119,50 +106,31 @@ void loop() {
   }
 }
 
-void initSensorStructure(){
-  temperature = (Sensor *) malloc(sizeof(Sensor));
-  humidity = (Sensor *) malloc(sizeof(Sensor));
-  photoSensor = (Sensor *) malloc(sizeof(Sensor));
-  waterLevel = (Sensor *) malloc(sizeof(Sensor));
-  soilMoisture = (Sensor * )malloc(sizeof(Sensor));
-  pumpState = (Sensor *) malloc(sizeof(Sensor));
-}
-
-void getHumidity(){
+void getHumidity() {
   int chk = DHT.read11(DHT11_PIN);
-  Serial.println(DHT.humidity);
-  humidity->sensingData = (byte *) &(DHT.humidity);
+  currentData->humidity = (float)DHT.humidity;
 }
 
-void getTemperature(){
+void getTemperature() {
   int chk = DHT.read11(DHT11_PIN);
-  Serial.println(DHT.temperature);
-  temperature->sensingData = (byte *) &(DHT.temperature);
+  currentData->temperature = (float)DHT.temperature;
 }
 
-void getPhotoSensor(){
-  static int phData;
-  phData = analogRead(PHOTOSENSOR_PIN);
-
-  photoSensor->sensingData = (byte *) &phData;
+void getPhotoSensor() {
+  currentData->photoSensor = analogRead(PHOTOSENSOR_PIN);
 }
 
-void getMoistureSensor(){  
-  static int soilData;
-  soilData = analogRead(MOISTURESENSOR_PIN);
-
-  soilMoisture->sensingData = (byte *) &soilData;
+void getMoistureSensor() {
+  currentData->soilMoisture = 123; //analogRead(MOISTURESENSOR_PIN);
 }
 
-void getWaterLvl(){
-  static int waterData;
-  waterData = analogRead(WATERLEVEL_PIN);
-
-  waterLevel->sensingData = (byte *) &waterData;
+void getWaterLvl() {
+  currentData->waterLevel = 321; //analogRead(WATERLEVEL_PIN);
 }
+
 /* function to send data that has more than 1 Byte over Serial */
-void writeBytes(byte * toSend, size_t size){
-  for(size_t i = 0; i < size; i++){
+void writeBytes(byte *toSend, size_t size) {
+  for (size_t i = 0; i < size; i++) {
     mySerial.write(*toSend++);
   }
 }

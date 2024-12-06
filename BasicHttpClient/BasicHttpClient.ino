@@ -1,7 +1,5 @@
-#include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
-#include <ESP8266HTTPClient.h>
-#include <WiFiClient.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
 
 /* Wifi Configurations */
 #define APSSID "ESP_AccessPoint"
@@ -11,6 +9,7 @@
 /* Server Routes for sensor data */
 #define serverTemperature server "temperature"
 #define serverHumidity server "humidity"
+#define serverPhotosensor server "photosensor"
 #define serverWaterLVL server "water-level"
 #define serverSoilMoist server "soil-moisture"
 #define serverPumpState server "pump-state"
@@ -19,16 +18,21 @@
 enum SENSOR {
   TEMPERATURE = 1,
   HUMIDITY,
+  PHOTOSENSOR,
   WATER_LVL,
   SOIL_MOISTURE,
   PUMP_STATE,
 };
 
+typedef struct {
+  const char *  type;
+  bool          enablePeriodic;
+  unsigned long samplingRate;
+} SensorConfig;
+
 /* Set these to your desired credentials. */
 const char *ssid = APSSID;
 const char *password = APPSK;
-
-ESP8266WiFiMulti WiFiMulti;
 
 void setup() {
   Serial.begin(19200);
@@ -48,38 +52,23 @@ void setup() {
   WiFi.setAutoReconnect(true);
 }
 
-void loop(){
-  
-  if ((WiFiMulti.run() != WL_CONNECTED)){
+void loop() {
+
+  if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi Disconnected");
     Serial.println("*********Attempting to Reconnect*********");
-  } else {
-    getReading(TEMPERATURE);
-    delay(500);
-  
-    getReading(HUMIDITY);
-    delay(500);
-  
-    getReading(WATER_LVL);
-    delay(500);
-  
-    getReading(SOIL_MOISTURE);
-    delay(500);
-  
-    getReading(PUMP_STATE);
-    delay(500);
-  }
-    delay(10000);
-    // TODO: Listen to serial reads from terminal then execute the command (ex: ON DEMAND data gather)
+  } 
+
+  // TODO: Listen to serial reads from terminal then execute the command (ex: ON DEMAND data gather)
 }
 
 /* function for requesting a read (HttpGET) from a specific server route */
-void getReading(SENSOR sensor){
+void getReading(SENSOR sensor) {
 
   String sensorReading;
-  
+
   // Process the reading
-  switch(sensor){
+  switch (sensor) {
     case TEMPERATURE:
       Serial.println("Getting temperature data.......");
       sensorReading = httpGETRequest(serverTemperature);
@@ -92,21 +81,28 @@ void getReading(SENSOR sensor){
       sensorReading = httpGETRequest(serverHumidity);
       Serial.print(" Humidity = ");
       Serial.print(sensorReading);
-      Serial.println(); 
+      Serial.println();
+      break;
+    case PHOTOSENSOR:
+      Serial.println("Getting photosensor data.......");
+      sensorReading = httpGETRequest(serverPhotosensor);
+      Serial.print(" Light value = ");
+      Serial.print(sensorReading);
+      Serial.println();
       break;
     case WATER_LVL:
       Serial.println("Getting water level reading.......");
       sensorReading = httpGETRequest(serverWaterLVL);
       Serial.print(" Water Level = ");
       Serial.print(sensorReading);
-      Serial.println(); 
+      Serial.println();
       break;
     case SOIL_MOISTURE:
       Serial.println("Getting soil moisture data.......");
       sensorReading = httpGETRequest(serverSoilMoist);
       Serial.print(" Soil Moisture = ");
       Serial.print(sensorReading);
-      Serial.println(); 
+      Serial.println();
       break;
     case PUMP_STATE:
       Serial.println("Getting Pump's state.......");
@@ -121,7 +117,7 @@ void getReading(SENSOR sensor){
   Serial.println();
 }
 
-void connectToWifi(){
+void connectToWifi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
@@ -135,7 +131,7 @@ void connectToWifi(){
 }
 
 /* function for implementing a get request to a server route for data collection */
-String httpGETRequest(const char* serverName){
+String httpGETRequest(const char *serverName) {
   WiFiClient client;
   HTTPClient http;
 
@@ -148,12 +144,11 @@ String httpGETRequest(const char* serverName){
   // stores the data collected
   String payload;
 
-  if(httpResponseCode > 0){
+  if (httpResponseCode > 0) {
     Serial.print("HTTP Response code: ");
     Serial.println(httpResponseCode);
     payload = http.getString();
-  }
-  else {
+  } else {
     Serial.print("Error Code: ");
     Serial.println(httpResponseCode);
   }
@@ -165,4 +160,3 @@ String httpGETRequest(const char* serverName){
 }
 
 // TODO: Hardware Timer that can fire based on an interval variable.
-         
