@@ -1,12 +1,26 @@
+#include <Wire.h>
+//#include <Adafruit_GFX.h>
+//#include <Adafruit_SSD1306.h>
+
 #include <SoftwareSerial.h>
 #include <dht.h>
 
 #define tx 11
 #define rx 12
+#define PUMP_PIN 8
+#define LIGHT_PIN 7
 #define DHT11_PIN 2
 #define PHOTOSENSOR_PIN A0
 #define MOISTURESENSOR_PIN A1
 #define WATERLEVEL_PIN A2
+
+#define SCREEN_WIDTH 128  // OLED display width, in pixels
+#define SCREEN_HEIGHT 64  // OLED display height, in pixels
+
+#define WET 220
+#define DRY 460
+
+#define DARK 80
 
 /* Commands for requesting sensor data from Arduino via Serial*/
 enum COMMANDS : uint8_t {
@@ -18,18 +32,6 @@ enum COMMANDS : uint8_t {
   PUMP_STATE,
 };
 
-enum WETNESS {
-  WET = 220,
-  SOMEWHAT_WET = 320,
-  SOMEWHAT_DRY = 400,
-  DRY = 460
-};
-
-enum REPORT_MODE : uint8_t {
-  PERIODICAL,
-  ON_DEMAND
-};
-
 /* struct for all the data */
 typedef struct {
   float temperature;
@@ -38,9 +40,13 @@ typedef struct {
   int16_t waterLevel;
   int16_t soilMoisture;
   bool pumpState;
+  bool ledState;
 } SensorData;
 
 // init
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
 SoftwareSerial mySerial(rx, tx);
 dht DHT;
 SensorData *currentData = (SensorData *)malloc(sizeof(SensorData));
@@ -49,7 +55,23 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
   mySerial.begin(57600);
-  Serial.println("Starting..........");
+
+  // if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {  // Address 0x3D for 128x64
+  //   Serial.println(F("SSD1306 allocation failed"));
+  //   for (;;)
+  //     ;
+  // }
+
+  // delay(2000);
+  // display.clearDisplay();
+  // Serial.println("Starting..........");
+
+  // display.setTextSize(1);
+  // display.setTextColor(WHITE);
+  // display.setCursor(0, 10);
+  // // Display static text
+  // display.println("Hello, world!");
+  // display.display();
 }
 
 void loop() {
@@ -97,12 +119,29 @@ void loop() {
       case PUMP_STATE:
         Serial.println("Pump state requested");
         Serial.println("Sending pump state data.....");
+        getPumpState();
         writeBytes((byte *)&(currentData->pumpState), sizeof(bool));
         // pump on or off
         break;
       default:
         Serial.println("Unknown Command");
     }
+  }
+  if (currentData->soilMoisture < WET && currentData->pumpState) {
+    digitalWrite(PUMP_PIN, LOW);
+    currentData->pumpState = false;
+  }
+  if (currentData->soilMoisture > DRY && ~currentData->pumpState) {
+    digitalWrite(PUMP_PIN, HIGH);
+    currentData->pumpState = true;
+  }
+  if (currentData->photoSensor <= DARK && ~currentData->ledState) {
+    digitalWrite(LIGHT_PIN, HIGH);
+    currentData->ledState = true;
+  }
+  if (currentData->photoSensor > DARK && currentData->ledState) {
+    digitalWrite(LIGHT_PIN, LOW);
+    currentData->ledState = false;
   }
 }
 
@@ -121,13 +160,16 @@ void getPhotoSensor() {
 }
 
 void getMoistureSensor() {
-  currentData->soilMoisture = 123; //analogRead(MOISTURESENSOR_PIN);
+  currentData->soilMoisture = analogRead(MOISTURESENSOR_PIN);
 }
 
 void getWaterLvl() {
-  currentData->waterLevel = 321; //analogRead(WATERLEVEL_PIN);
+  currentData->waterLevel = analogRead(WATERLEVEL_PIN);
 }
 
+void getPumpState() {
+  currentData->pumpState = digitalRead(8);
+}
 /* function to send data that has more than 1 Byte over Serial */
 void writeBytes(byte *toSend, size_t size) {
   for (size_t i = 0; i < size; i++) {
